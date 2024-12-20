@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import shutil
+import base64
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
