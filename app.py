@@ -3,6 +3,7 @@ from flask_cors import CORS
 import yt_dlp
 import logging
 import os
+import requests
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -11,53 +12,28 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
-FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "bin", "ffmpeg.exe")
-
-def check_ffmpeg():
-    if not os.path.exists(FFMPEG_PATH):
-        logger.warning(f"FFmpeg not found at {FFMPEG_PATH}. MP3 conversion will not work.")
-        return False
-    return True
-
-def stream_video(url, format_type):
+def get_direct_url(url, format_type):
     try:
-        if format_type == 'mp4':
-            ydl_opts = {
-                'format': 'best[ext=mp4]',
-            }
-        elif format_type == 'mp3':
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'ffmpeg_location': FFMPEG_PATH,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            }
-
+        ydl_opts = {
+            'format': 'best[ext=mp4]' if format_type == 'mp4' else 'bestaudio/best',
+            'quiet': True,
+        }
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            
             if format_type == 'mp4':
-                url = info['url']
+                # Get direct video URL
+                return info['url'], info.get('title', 'video')
             else:
-                # For MP3, get the best audio format URL
+                # Get direct audio URL
                 for f in info['formats']:
                     if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
-                        url = f['url']
-                        break
-
-            # Stream the content
-            def generate():
-                import requests
-                response = requests.get(url, stream=True)
-                for chunk in response.iter_content(chunk_size=4096):
-                    if chunk:
-                        yield chunk
-
-            return generate(), info.get('title', 'video')
+                        return f['url'], info.get('title', 'audio')
+                
+        raise Exception('No suitable format found')
     except Exception as e:
-        logger.error(f"Error streaming video: {str(e)}")
+        logger.error(f"Error getting direct URL: {str(e)}")
         raise
 
 @app.route('/api/download', methods=['GET'])
@@ -66,22 +42,26 @@ def download_video():
         video_url = request.args.get('url')
         format_type = request.args.get('format', 'mp4')
         
-        if format_type == 'mp3' and not check_ffmpeg():
-            return jsonify({'error': 'FFmpeg not installed. Please install FFmpeg to download MP3s.'}), 400
-
-        generator, title = stream_video(video_url, format_type)
+        direct_url, title = get_direct_url(video_url, format_type)
         
         # Clean filename
         filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
         filename = f"{filename}.{format_type}"
 
-        response = Response(stream_with_context(generator()))
+        def generate():
+            with requests.get(direct_url, stream=True) as r:
+                r.raise_for_status()
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+
+        response = Response(stream_with_context(generate()))
         response.headers.set('Content-Disposition', 'attachment', filename=filename)
         response.headers.set('Content-Type', 'application/octet-stream')
         return response
 
     except Exception as e:
-        logger.error(f"Error downloading video: {str(e)}")
+        logger.error(f"Error downloading: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
 @app.route('/')
@@ -112,16 +92,15 @@ def get_video_info():
         })
         
     except Exception as e:
-        logger.error(f"Error fetching video info: {str(e)}", exc_info=True)
+        logger.error(f"Error fetching video info: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/progress')
 def get_progress():
-    progress_data = app.config.get('DOWNLOAD_PROGRESS', {
+    return jsonify({
         'progress': 0,
-        'status': 'waiting'
+        'status': 'streaming'
     })
-    return jsonify(progress_data)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=False, port=5000) 
