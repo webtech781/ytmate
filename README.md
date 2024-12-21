@@ -46,6 +46,10 @@ source venv/bin/activate
 3. Install dependencies:
 
 ```bash
+# For Windows (use this since you're on Windows)
+python -m pip install -r requirements.txt
+
+# Or simply
 pip install -r requirements.txt
 ```
 
