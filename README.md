@@ -2,7 +2,7 @@
 
 YTMate is a modern, user-friendly YouTube video downloader built with Python and Flask. It allows users to download videos in both MP4 and MP3 formats with a clean, responsive interface.
 
-![YTMate Screenshot](screenshot.png)
+![YTMate Screenshot](/img/screenshot.png)
 
 ## Features
 
