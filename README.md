@@ -56,7 +56,7 @@ pip install -r requirements.txt
 
 
 4. Install FFmpeg:
-   - **Windows**: Download from [ffmpeg.org]([https://ffmpeg.org/download.html](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip)) and extract it. Copy the `bin` folder from the extracted files and paste it into the `ffmpeg` directory within the project folder, renaming it to `ffmpeg`.
+   - **Windows**: Download from [ffmpeg.org](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip) and extract it. Copy the `bin` folder from the extracted files and paste it into the `ffmpeg` directory within the project folder, renaming it to `ffmpeg`.
    - **Linux**: `sudo apt-get install ffmpeg`
    - **Mac**: `brew install ffmpeg`
 
