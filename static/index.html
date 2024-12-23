@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YTMate - YouTube Downloader</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23FF0000' d='M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z'/></svg>">
+    <link rel="stylesheet" href="/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fab fa-youtube"></i> YTMate</h1>
+            <p>Download YouTube Videos & Audios Easily</p>
+        </header>
+
+        <main>
+            <div class="search-box">
+                <input type="text" id="url" placeholder="Paste YouTube URL here...">
+                <button class="clear-input" id="clear-input">
+                    <i class="fas fa-times"></i>
+                </button>
+                <button id="fetch-info"><i class="fas fa-search"></i></button>
+            </div>
+
+            <div id="video-info" class="hidden">
+                <div class="video-card">
+                    <img id="thumbnail" src="" alt="Video Thumbnail">
+                    <div class="video-details">
+                        <h2 id="title"></h2>
+                        <p id="author"></p>
+                        <div class="stats">
+                            <span id="duration"><i class="far fa-clock"></i></span>
+                            <span id="views"><i class="far fa-eye"></i></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="download-options">
+                    <select id="quality-select" class="hidden">
+                        <option value="best">Best Quality</option>
+                    </select>
+                    <div class="format-buttons">
+                        <button id="download-mp4" class="download-btn">
+                            <i class="fas fa-video"></i> Download MP4
+                        </button>
+                        <button id="download-mp3" class="download-btn">
+                            <i class="fas fa-music"></i> Download MP3
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="loading" class="hidden">
+                <div class="loader"></div>
+                <p>Processing your request...</p>
+            </div>
+        </main>
+
+        <footer>
+            <p onclick="window.open('https://github.com/webtech781', '_blank')" style="cursor: pointer;">
+                Made with <i class="fas fa-heart"></i> by webtech
+            </p>
+        </footer>
+    </div>
+
+    <div id="download-progress" class="download-progress hidden">
+        <div class="loader"></div>
+        <div class="progress-bar">
+            <div class="progress" id="progress-bar"></div>
+        </div>
+        <div class="download-status" id="download-status">Starting download...</div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('url');
+        const fetchButton = document.getElementById('fetch-info');
+        const videoInfo = document.getElementById('video-info');
+        const loading = document.getElementById('loading');
+        const mp4Button = document.getElementById('download-mp4');
+        const mp3Button = document.getElementById('download-mp3');
+        const downloadProgress = document.getElementById('download-progress');
+        const progressBar = document.getElementById('progress-bar');
+        const downloadStatus = document.getElementById('download-status');
+        const clearInput = document.getElementById('clear-input');
+
+        function isValidYouTubeUrl(url) {
+            const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
+            return youtubeRegex.test(url);
+        }
+
+        async function fetchVideoInfo() {
+            const url = urlInput.value.trim();
+            if (!url) {
+                window.location.href = '/error?message=Please enter a URL';
+                return;
+            }
+
+            if (!isValidYouTubeUrl(url)) {
+                window.location.href = '/error?message=Please enter a valid YouTube URL';
+                return;
+            }
+
+            loading.classList.remove('hidden');
+            videoInfo.classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/video-info?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('thumbnail').src = data.thumbnail_url;
+                    document.getElementById('title').textContent = data.title;
+                    document.getElementById('author').textContent = data.author;
+                    document.getElementById('duration').innerHTML = `<i class="far fa-clock"></i> ${formatDuration(data.duration)}`;
+                    document.getElementById('views').innerHTML = `<i class="far fa-eye"></i> ${formatViews(data.views)}`;
+                    videoInfo.classList.remove('hidden');
+                } else {
+                    window.location.href = `/error?message=${encodeURIComponent(data.error || 'Failed to fetch video info')}`;
+                }
+            } catch (error) {
+                window.location.href = '/error?message=Error fetching video info';
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        async function getVideoFormats(url) {
+            try {
+                const response = await fetch(`/api/formats?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    throw new Error('Failed to get video formats');
+                }
+                const formats = await response.json();
+                
+                if (formats.error === 'ffmpeg_not_found') {
+                    alert('FFmpeg is not installed. Video quality selection will be limited. Please install FFmpeg for full functionality.');
+                    return;
+                }
+                
+                const qualitySelect = document.getElementById('quality-select');
+                qualitySelect.innerHTML = formats.map(f => 
+                    `<option value="${f.quality}">${f.quality} (${formatFileSize(f.filesize)})</option>`
+                ).join('');
+                
+                qualitySelect.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error getting formats:', error);
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 'Unknown') return 'Unknown size';
+            bytes = parseInt(bytes);
+            return formatBytes(bytes);
+        }
+
+        async function downloadVideo(format) {
+            const url = urlInput.value.trim();
+            const quality = document.getElementById('quality-select').value;
+            
+            if (!url) {
+                window.location.href = '/error?message=Please enter a URL';
+                return;
+            }
+
+            if (!isValidYouTubeUrl(url)) {
+                window.location.href = '/error?message=Please enter a valid YouTube URL';
+                return;
+            }
+
+            try {
+                isDownloading = true;
+                downloadProgress.classList.remove('hidden');
+                progressBar.style.width = '0%';
+                downloadStatus.textContent = 'Starting download...';
+
+                // Start progress monitoring with shorter interval
+                progressInterval = setInterval(checkProgress, 500);
+
+                const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&format=${format}&quality=${quality}`;
+                const response = await fetch(downloadUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                if (blob.size === 0) {
+                    throw new Error('Downloaded file is empty');
+                }
+
+                // Get filename from Content-Disposition header
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `video.${format}`;
+                if (contentDisposition) {
+                    const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+                    if (matches != null && matches[1]) {
+                        filename = matches[1].replace(/['"]/g, '');
+                    }
+                }
+
+                // Create download link
+                const downloadLink = document.createElement('a');
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.download = filename;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(downloadLink.href);
+
+            } catch (error) {
+                console.error('Download error:', error);
+                isDownloading = false;
+                clearInterval(progressInterval);
+                downloadStatus.textContent = 'Download failed. Please try again.';
+                setTimeout(() => {
+                    downloadProgress.classList.add('hidden');
+                }, 2000);
+            }
+        }
+
+        async function checkProgress() {
+            try {
+                const response = await fetch('/api/progress');
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    clearInterval(progressInterval);
+                    downloadStatus.textContent = 'Download failed. Please try again.';
+                    setTimeout(() => {
+                        downloadProgress.classList.add('hidden');
+                        isDownloading = false;
+                    }, 2000);
+                    return;
+                }
+
+                if (data.status === 'converting') {
+                    progressBar.style.width = '99%';
+                    downloadStatus.textContent = 'Converting to MP3...';
+                    return;
+                }
+
+                if (data.status === 'finished') {
+                    progressBar.style.width = '100%';
+                    downloadStatus.textContent = 'Download complete!';
+                    clearInterval(progressInterval);
+                    setTimeout(() => {
+                        downloadProgress.classList.add('hidden');
+                        isDownloading = false;
+                    }, 2000);
+                    return;
+                }
+
+                if (data.started) {
+                    const progress = Math.min(data.progress, 99.9);
+                    progressBar.style.width = `${progress}%`;
+                    
+                    if (data.speed) {
+                        const speedFormatted = formatBytes(data.speed) + '/s';
+                        const etaFormatted = formatTime(data.eta);
+                        downloadStatus.textContent = `Downloading: ${progress.toFixed(1)}% (${speedFormatted}) - ETA: ${etaFormatted}`;
+                    } else {
+                        downloadStatus.textContent = `Downloading: ${progress.toFixed(1)}%`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking progress:', error);
+            }
+        }
+
+        function formatDuration(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        function formatViews(views) {
+            return new Intl.NumberFormat().format(views);
+        }
+
+        function formatTime(seconds) {
+            if (!seconds || seconds < 0) return 'calculating...';
+            
+            const days = Math.floor(seconds / (24 * 60 * 60));
+            seconds = seconds % (24 * 60 * 60);
+            const hours = Math.floor(seconds / (60 * 60));
+            seconds = seconds % (60 * 60);
+            const minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+
+            let timeString = '';
+            if (days > 0) timeString += `${days}d `;
+            if (hours > 0) timeString += `${hours}h `;
+            if (minutes > 0) timeString += `${minutes}m `;
+            if (seconds > 0 || timeString === '') timeString += `${seconds}s`;
+
+            return timeString.trim();
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!bytes || bytes === 0) return '0 B';
+
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
+        }
+
+        // Event Listeners
+        fetchButton.addEventListener('click', fetchVideoInfo);
+        mp4Button.addEventListener('click', () => downloadVideo('mp4'));
+        mp3Button.addEventListener('click', () => downloadVideo('mp3'));
+
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') fetchVideoInfo();
+        });
+
+        urlInput.addEventListener('input', () => {
+            clearInput.style.display = urlInput.value ? 'block' : 'none';
+        });
+
+        clearInput.addEventListener('click', () => {
+            urlInput.value = '';
+            clearInput.style.display = 'none';
+            videoInfo.classList.add('hidden');
+        });
+
+        // Initialize clear button visibility
+        if (urlInput.value) {
+            clearInput.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

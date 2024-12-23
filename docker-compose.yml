@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  ytmate:
+    build: .
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
