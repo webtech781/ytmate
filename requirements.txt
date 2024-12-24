@@ -2,3 +2,5 @@ flask==3.0.0
 flask-cors==4.0.0
 yt-dlp==2024.3.10
 requests==2.31.0
+brotli==1.1.0
+websockets==11.0.3
