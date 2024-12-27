@@ -81,16 +81,15 @@ def init_routes(app, TEMP_DIR):
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': True,
+                'socket_timeout': 30,
+                'retries': 3,
+                'fragment_retries': 3,
+                'extractor_retries': 3,
+                'file_access_retries': 3,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
             }
-            
-            # Try to extract cookies if running in container
-            if os.environ.get('CONTAINER'):
-                try:
-                    cookie_file = "/app/cookies/youtube.txt"
-                    extract_cookies_from_browser("chromium", cookie_file)
-                    ydl_opts['cookiefile'] = cookie_file
-                except Exception as e:
-                    logger.warning(f"Could not extract cookies: {e}")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=False)
