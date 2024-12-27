@@ -4,8 +4,13 @@ FROM python:3.12-slim
 # Install system dependencies including FFmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    cloudflared \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install cloudflared
+RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
+    && dpkg -i cloudflared.deb \
+    && rm cloudflared.deb
 
 # Set working directory
 WORKDIR /app
