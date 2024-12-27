@@ -5,7 +5,14 @@ services:
     build: .
     ports:
       - "5000:5000"
-    restart: unless-stopped
+    volumes:
+      - ./:/app
+      - temp_data:/app/temp
     environment:
       - FLASK_APP=app.py
-      - FLASK_ENV=production
+      - FLASK_ENV=development
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+volumes:
+  temp_data:
