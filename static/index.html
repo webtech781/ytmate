@@ -226,53 +226,35 @@
             }
         }
 
-        async function checkProgress() {
-            try {
-                const response = await fetch('/api/progress');
-                const data = await response.json();
-                
-                if (data.status === 'error') {
-                    clearInterval(progressInterval);
-                    downloadStatus.textContent = 'Download failed. Please try again.';
-                    setTimeout(() => {
-                        downloadProgress.classList.add('hidden');
+        function checkProgress() {
+            if (!isDownloading) return;
+            
+            fetch('/api/progress')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'error') {
+                        showError('Download failed');
                         isDownloading = false;
-                    }, 2000);
-                    return;
-                }
-
-                if (data.status === 'converting') {
-                    progressBar.style.width = '99%';
-                    downloadStatus.textContent = 'Converting to MP3...';
-                    return;
-                }
-
-                if (data.status === 'finished') {
-                    progressBar.style.width = '100%';
-                    downloadStatus.textContent = 'Download complete!';
-                    clearInterval(progressInterval);
-                    setTimeout(() => {
-                        downloadProgress.classList.add('hidden');
-                        isDownloading = false;
-                    }, 2000);
-                    return;
-                }
-
-                if (data.started) {
-                    const progress = Math.min(data.progress, 99.9);
-                    progressBar.style.width = `${progress}%`;
-                    
-                    if (data.speed) {
-                        const speedFormatted = formatBytes(data.speed) + '/s';
-                        const etaFormatted = formatTime(data.eta);
-                        downloadStatus.textContent = `Downloading: ${progress.toFixed(1)}% (${speedFormatted}) - ETA: ${etaFormatted}`;
-                    } else {
-                        downloadStatus.textContent = `Downloading: ${progress.toFixed(1)}%`;
+                        return;
                     }
-                }
-            } catch (error) {
-                console.error('Error checking progress:', error);
-            }
+                    
+                    if (data.status === 'finished' || data.progress >= 100) {
+                        console.log('Download complete');
+                        isDownloading = false;
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                        return;
+                    }
+                    
+                    updateProgress(data.progress, data.speed, data.eta);
+                    setTimeout(checkProgress, 1000);
+                })
+                .catch(error => {
+                    console.error('Error checking progress:', error);
+                    showError('Error checking download progress');
+                    isDownloading = false;
+                });
         }
 
         function formatDuration(seconds) {

@@ -1,10 +1,11 @@
 import yt_dlp
 import logging
 import os
-import tempfile
 import subprocess
-from flask import send_file
+from flask import Response, stream_with_context
 from handlers.download_state import download_progress
+import requests
+from utils.youtube import get_video_id
 
 logger = logging.getLogger(__name__)
 
@@ -106,90 +107,146 @@ class VideoHandler:
             raise
 
     @staticmethod
-    def download_video(url, quality='best', progress_hook=None):
-        """Download video and return path to downloaded file"""
-        temp_dir = tempfile.mkdtemp()
-        temp_file = os.path.join(temp_dir, 'video.mp4')
-        
-        ffmpeg_path = VideoHandler.check_ffmpeg()
-        format_str = VideoHandler.get_format_string(quality, bool(ffmpeg_path))
-        
+    def get_ydl_opts(quality='best', progress_callback=None):
         ydl_opts = {
-            'format': format_str,
-            'quiet': True,
-            'progress_hooks': [progress_hook] if progress_hook else None,
-            'outtmpl': temp_file,
-            'no_warnings': True,
+            'format': quality,
+            'outtmpl': '%(title)s.%(ext)s',
+            'progress_hooks': [progress_callback] if progress_callback else None,
+            'socket_timeout': 30,
+            'retries': 5,
+            'fragment_retries': 5,
+            'extractor_retries': 5,
+            'file_access_retries': 5,
+            'geo_bypass': True,
+            'geo_bypass_country': 'US',
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate'
+            }
         }
-
-        if isinstance(ffmpeg_path, str):
-            ydl_opts.update({
-                'ffmpeg_location': os.path.dirname(ffmpeg_path),
-                'merge_output_format': 'mp4'
-            })
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Update progress to indicate download is starting
-                if progress_hook:
-                    progress_hook({'status': 'starting', 'downloaded_bytes': 0, 'total_bytes': 0})
-                
-                info = ydl.extract_info(url, download=True)
-                
-                # Update progress to indicate download is complete
-                if progress_hook:
-                    progress_hook({'status': 'finished', 'downloaded_bytes': 100, 'total_bytes': 100})
-                
-                filename = f"{info.get('title', 'video')}_{quality}.mp4"
-                filename = "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).rstrip()
-                
-                file_size = os.path.getsize(temp_file)
-                logger.info(f"Downloaded video: {filename} ({file_size} bytes)")
-                
-                return temp_file, filename
-
-        except Exception as e:
-            logger.error(f"Error downloading video: {str(e)}")
-            download_progress['status'] = 'error'
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            raise
+        return ydl_opts
 
     @staticmethod
-    def create_video_stream(file_path, filename):
-        """Create a video stream response"""
+    def get_video_url(video_id, quality='best'):
+        """Get direct video URL using Innertube API"""
+        url = "https://www.youtube.com/youtubei/v1/player"
+        params = {
+            "key": "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        }
+        data = {
+            "context": {
+                "client": {
+                    "hl": "en",
+                    "gl": "US",
+                    "clientName": "WEB",
+                    "clientVersion": "2.20231219.01.00",
+                    "originalUrl": f"https://www.youtube.com/watch?v={video_id}",
+                    "platform": "DESKTOP"
+                }
+            },
+            "videoId": video_id,
+            "playbackContext": {
+                "contentPlaybackContext": {
+                    "signatureTimestamp": "19719"
+                }
+            }
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Content-Type": "application/json",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": "2.20231219.01.00",
+            "Origin": "https://www.youtube.com"
+        }
+        
+        response = requests.post(url, params=params, json=data, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        formats = data.get('streamingData', {}).get('formats', [])
+        formats.extend(data.get('streamingData', {}).get('adaptiveFormats', []))
+        
+        # Sort by quality and pick the best matching format
+        formats.sort(key=lambda x: int(x.get('height', 0)), reverse=True)
+        for fmt in formats:
+            if fmt.get('mimeType', '').startswith('video/mp4'):
+                return fmt['url'], data['videoDetails']['title']
+                
+        raise Exception("No suitable format found")
+
+    @staticmethod
+    def download_video(url, quality='best', progress_callback=None):
+        """Stream video directly to client"""
         try:
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"Video file not found: {file_path}")
+            ydl_opts = {
+                'format': 'best[ext=mp4]',
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False,
+                'socket_timeout': 30,
+                'retries': 5,
+                'fragment_retries': 5,
+                'extractor_retries': 5,
+                'file_access_retries': 5,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Origin': 'https://www.youtube.com',
+                    'Referer': 'https://www.youtube.com/'
+                }
+            }
 
-            file_size = os.path.getsize(file_path)
-            if file_size == 0:
-                raise Exception("Downloaded file is empty")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                video_url = info['url']
+                title = info['title']
+                filename = f"{title}_{quality}.mp4"
+                filename = "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.')).rstrip()
 
-            logger.info(f"Streaming file: {filename} ({file_size} bytes)")
-            
-            response = send_file(
-                file_path,
-                mimetype='video/mp4',
-                as_attachment=True,
-                download_name=filename
-            )
+                def generate():
+                    headers = {
+                        'User-Agent': ydl_opts['http_headers']['User-Agent'],
+                        'Accept': '*/*',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Origin': 'https://www.youtube.com',
+                        'Referer': 'https://www.youtube.com/',
+                        'Sec-Fetch-Dest': 'video',
+                        'Sec-Fetch-Mode': 'cors',
+                        'Sec-Fetch-Site': 'cross-site',
+                        'Range': 'bytes=0-'  # Add range header for streaming
+                    }
 
-            @response.call_on_close
-            def cleanup():
-                try:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                        logger.info(f"Cleaned up temporary file: {file_path}")
-                except Exception as e:
-                    logger.error(f"Error cleaning up file: {str(e)}")
+                    with requests.get(video_url, stream=True, headers=headers) as r:
+                        r.raise_for_status()
+                        total_size = int(r.headers.get('content-length', 0))
+                        block_size = 8192
+                        downloaded = 0
 
-            return response
+                        for chunk in r.iter_content(chunk_size=block_size):
+                            if chunk:
+                                downloaded += len(chunk)
+                                if progress_callback and total_size:
+                                    progress_callback({
+                                        'status': 'downloading',
+                                        'downloaded_bytes': downloaded,
+                                        'total_bytes': total_size,
+                                        'speed': block_size
+                                    })
+                                yield chunk
+
+                response = Response(
+                    stream_with_context(generate()),
+                    content_type='video/mp4'
+                )
+                response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response, filename
 
         except Exception as e:
-            logger.error(f"Error creating video stream: {str(e)}")
-            download_progress['status'] = 'error'
-            download_progress['progress'] = 0
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            logger.error(f"Error streaming video: {str(e)}")
+            if progress_callback:
+                progress_callback({'status': 'error'})
             raise
