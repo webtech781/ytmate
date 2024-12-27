@@ -1,10 +1,12 @@
 # Use Python 3.12 slim image
 FROM python:3.12-slim
 
-# Install system dependencies including FFmpeg
+# Install system dependencies including FFmpeg and browser
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cloudflared
@@ -27,12 +29,13 @@ COPY . .
 # Create temp directory for downloads
 RUN mkdir -p /app/temp
 
-# Expose port
-EXPOSE 5000
+# Create cookies directory
+RUN mkdir -p /app/cookies
 
 # Set environment variables
 ENV FLASK_APP=app.py
 ENV PYTHONUNBUFFERED=1
+ENV CONTAINER=1
 
 # Run the application
 CMD ["python", "app.py"] 
