@@ -2,9 +2,13 @@ from flask import jsonify, request, session, send_from_directory, render_templat
 import yt_dlp
 import logging
 import threading
+import os
+import tempfile
+from pathlib import Path
 from handlers.video_handler import VideoHandler
 from handlers.audio_handler import AudioHandler
 from handlers.download_state import download_progress
+from yt_dlp.cookies import extract_cookies_from_browser
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,12 @@ def progress_hook(d):
     except Exception as e:
         logger.error(f"Error in progress hook: {str(e)}")
         download_progress['status'] = 'error'
+
+def get_cookie_file():
+    """Get platform-independent path for cookie file"""
+    cookie_dir = os.path.join(tempfile.gettempdir(), 'ytmate_cookies')
+    os.makedirs(cookie_dir, exist_ok=True)
+    return os.path.join(cookie_dir, 'youtube.txt')
 
 def init_routes(app, TEMP_DIR):
     @app.route('/api/download', methods=['GET'])
@@ -72,6 +82,15 @@ def init_routes(app, TEMP_DIR):
                 'no_warnings': True,
                 'extract_flat': True,
             }
+            
+            # Try to extract cookies if running in container
+            if os.environ.get('CONTAINER'):
+                try:
+                    cookie_file = "/app/cookies/youtube.txt"
+                    extract_cookies_from_browser("chromium", cookie_file)
+                    ydl_opts['cookiefile'] = cookie_file
+                except Exception as e:
+                    logger.warning(f"Could not extract cookies: {e}")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=False)
