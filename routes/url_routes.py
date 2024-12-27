@@ -5,6 +5,9 @@ import threading
 import os
 import tempfile
 from pathlib import Path
+import os
+import tempfile
+from pathlib import Path
 from handlers.video_handler import VideoHandler
 from handlers.audio_handler import AudioHandler
 from handlers.download_state import download_progress
@@ -105,6 +108,8 @@ def init_routes(app, TEMP_DIR):
             quality = request.args.get('quality', 'best')
             
             if format_type == 'mp4':
+                response, filename = VideoHandler.download_video(video_url, quality, progress_hook)
+                return response
                 response, filename = VideoHandler.download_video(video_url, quality, progress_hook)
                 return response
             else:
