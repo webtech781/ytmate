@@ -110,8 +110,6 @@ def init_routes(app, TEMP_DIR):
             if format_type == 'mp4':
                 response, filename = VideoHandler.download_video(video_url, quality, progress_hook)
                 return response
-                response, filename = VideoHandler.download_video(video_url, quality, progress_hook)
-                return response
             else:
                 audio_handler = AudioHandler(TEMP_DIR)
                 file_path, filename = audio_handler.get_audio_file(video_url)
@@ -135,10 +133,13 @@ def init_routes(app, TEMP_DIR):
             data = get_video_info_direct(video_id)
             
             video_details = data.get('videoDetails', {})
+            thumbnails = video_details.get('thumbnail', {}).get('thumbnails', [])
+            thumbnail_url = thumbnails[-1].get('url') if thumbnails else ''
+            
             return jsonify({
                 'title': video_details.get('title', 'Unknown Title'),
-                'author': video_details.get('author', 'Unknown Author'),
-                'thumbnail_url': video_details.get('thumbnail', {}).get('thumbnails', [{}])[0].get('url', ''),
+                'author': video_details.get('channelTitle', video_details.get('author', 'Unknown Author')),
+                'thumbnail_url': thumbnail_url,
                 'duration': int(video_details.get('lengthSeconds', 0)),
                 'views': int(video_details.get('viewCount', 0))
             })

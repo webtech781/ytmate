@@ -3,7 +3,6 @@ import logging
 import os
 import subprocess
 from flask import Response, stream_with_context
-from flask import Response, stream_with_context
 from handlers.download_state import download_progress
 import requests
 from utils.youtube import get_video_id
@@ -247,9 +246,6 @@ class VideoHandler:
                 return response, filename
 
         except Exception as e:
-            logger.error(f"Error streaming video: {str(e)}")
-            if progress_callback:
-                progress_callback({'status': 'error'})
             logger.error(f"Error streaming video: {str(e)}")
             if progress_callback:
                 progress_callback({'status': 'error'})
