@@ -29,11 +29,12 @@ def progress_hook(d):
             download_progress['speed'] = d.get('speed', 0)
             download_progress['eta'] = d.get('eta', 0)
             download_progress['status'] = 'downloading'
-        elif d['status'] == 'finished':
+        elif d['status'] == 'finished' or (d.get('downloaded_bytes', 0) == d.get('total_bytes', 0)):
             download_progress['progress'] = 100
             download_progress['speed'] = 0
             download_progress['eta'] = 0
             download_progress['status'] = 'finished'
+            download_progress['started'] = False
     except Exception as e:
         logger.error(f"Error in progress hook: {str(e)}")
         download_progress['status'] = 'error'
@@ -59,8 +60,8 @@ def init_routes(app, TEMP_DIR):
             quality = request.args.get('quality', 'best')
             
             if format_type == 'mp4':
-                file_path, filename = VideoHandler.download_video(video_url, quality, progress_hook)
-                return VideoHandler.create_video_stream(file_path, filename)
+                response, filename = VideoHandler.download_video(video_url, quality, progress_hook)
+                return response
             else:
                 audio_handler = AudioHandler(TEMP_DIR)
                 file_path, filename = audio_handler.get_audio_file(video_url)
@@ -82,26 +83,39 @@ def init_routes(app, TEMP_DIR):
                 'no_warnings': True,
                 'extract_flat': True,
                 'socket_timeout': 30,
-                'retries': 3,
-                'fragment_retries': 3,
-                'extractor_retries': 3,
-                'file_access_retries': 3,
+                'retries': 5,
+                'fragment_retries': 5,
+                'extractor_retries': 5,
+                'file_access_retries': 5,
+                'geo_bypass': True,
+                'geo_bypass_country': 'US',
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate'
                 }
             }
             
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_url, download=False)
-                
-            return jsonify({
-                'title': info.get('title', 'Unknown Title'),
-                'author': info.get('uploader', 'Unknown Author'),
-                'thumbnail_url': info.get('thumbnail', ''),
-                'duration': info.get('duration', 0),
-                'views': info.get('view_count', 0)
-            })
-            
+            # Try multiple times with different IPs
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(video_url, download=False)
+                        return jsonify({
+                            'title': info.get('title', 'Unknown Title'),
+                            'author': info.get('uploader', 'Unknown Author'),
+                            'thumbnail_url': info.get('thumbnail', ''),
+                            'duration': info.get('duration', 0),
+                            'views': info.get('view_count', 0)
+                        })
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        raise
+                    logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+                    continue
+                    
         except Exception as e:
             logger.error(f"Error fetching video info: {str(e)}")
             return jsonify({'error': str(e)}), 400
