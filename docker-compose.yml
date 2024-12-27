@@ -8,14 +8,18 @@ services:
     volumes:
       - ./:/app
       - temp_data:/app/temp
-    volumes:
-      - ./:/app
-      - temp_data:/app/temp
     environment:
       - FLASK_APP=app.py
-      - FLASK_ENV=development
+      - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      - WORKERS=4
+      - TIMEOUT=120
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   temp_data:

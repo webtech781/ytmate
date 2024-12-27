@@ -131,14 +131,15 @@ def init_routes(app, TEMP_DIR):
                 raise ValueError("Invalid YouTube URL")
                 
             data = get_video_info_direct(video_id)
+            logger.debug(f"API Response: {json.dumps(data.get('videoDetails', {}), indent=2)}")
             
             video_details = data.get('videoDetails', {})
-            thumbnails = video_details.get('thumbnail', {}).get('thumbnails', [])
-            thumbnail_url = thumbnails[-1].get('url') if thumbnails else ''
+            thumbnails = video_details.get('thumbnail', {}).get('thumbnails', [{}])
+            thumbnail_url = thumbnails[0].get('url', '')
             
             return jsonify({
                 'title': video_details.get('title', 'Unknown Title'),
-                'author': video_details.get('channelTitle', video_details.get('author', 'Unknown Author')),
+                'author': video_details.get('author', video_details.get('channelTitle', 'Unknown Author')),
                 'thumbnail_url': thumbnail_url,
                 'duration': int(video_details.get('lengthSeconds', 0)),
                 'views': int(video_details.get('viewCount', 0))
